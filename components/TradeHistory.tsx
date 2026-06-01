@@ -1,17 +1,30 @@
 "use client";
 
 import type { Trade } from "@/lib/types";
-import { formatCurrency, perTradePL, sortTrades } from "@/lib/calculations";
+import {
+  formatCurrency,
+  openPositionQty,
+  perTradePL,
+  positionKey,
+  sortTrades,
+} from "@/lib/calculations";
 
 interface Props {
   trades: Trade[];
   readOnly?: boolean;
   onEdit?: (trade: Trade) => void;
   onDelete?: (trade: Trade) => void;
+  onSell?: (trade: Trade, remainingQty: number) => void;
 }
 
-export function TradeHistory({ trades, readOnly, onEdit, onDelete }: Props) {
+export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Props) {
   const sorted = sortTrades(trades);
+  const openQty = openPositionQty(sorted);
+
+  const remainingFor = (t: Trade): number => {
+    if (t.action !== "buy") return 0;
+    return Math.max(0, openQty.get(positionKey(t)) ?? 0);
+  };
 
   if (sorted.length === 0) {
     return (
@@ -95,6 +108,15 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete }: Props) {
                   </td>
                   {!readOnly && (
                     <td className="py-2.5 px-2 text-right whitespace-nowrap">
+                      {remainingFor(t) > 0 && onSell && (
+                        <button
+                          onClick={() => onSell(t, remainingFor(t))}
+                          className="text-xs text-green-300 hover:text-green-200 mr-2"
+                          title={`Sell ${remainingFor(t)} open`}
+                        >
+                          Sell
+                        </button>
+                      )}
                       <button
                         onClick={() => onEdit?.(t)}
                         className="text-xs text-blue-300 hover:text-blue-200 mr-2"
@@ -176,6 +198,14 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete }: Props) {
               )}
               {!readOnly && (
                 <div className="mt-2 flex gap-3 justify-end">
+                  {remainingFor(t) > 0 && onSell && (
+                    <button
+                      onClick={() => onSell(t, remainingFor(t))}
+                      className="text-xs text-green-300 hover:text-green-200"
+                    >
+                      Sell ({remainingFor(t)})
+                    </button>
+                  )}
                   <button
                     onClick={() => onEdit?.(t)}
                     className="text-xs text-blue-300 hover:text-blue-200"
