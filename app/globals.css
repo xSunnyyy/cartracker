@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background-color: #0b0f14;
+  color: #e6edf5;
+  min-height: 100%;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl bg-bg-card border border-border-subtle p-5 shadow-lg shadow-black/20;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-bg-base disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-accent-blue text-white hover:bg-blue-500 focus:ring-blue-500;
+  }
+  .btn-success {
+    @apply btn bg-accent-green text-white hover:bg-green-500 focus:ring-green-500;
+  }
+  .btn-danger {
+    @apply btn bg-accent-red text-white hover:bg-red-500 focus:ring-red-500;
+  }
+  .btn-ghost {
+    @apply btn bg-bg-elevated text-gray-100 hover:bg-bg-input border border-border-subtle hover:border-border-strong;
+  }
+  .label {
+    @apply block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide;
+  }
+  .input {
+    @apply w-full rounded-lg bg-bg-input border border-border-subtle px-3 py-2.5 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent-blue focus:border-transparent;
+  }
+  .select {
+    @apply input appearance-none bg-no-repeat bg-right pr-9;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%239ca3af'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z' clip-rule='evenodd' /%3E%3C/svg%3E");
+    background-size: 1.25em 1.25em;
+    background-position: right 0.5rem center;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium;
+  }
+  .pill-buy {
+    @apply pill bg-red-500/15 text-red-300 border border-red-500/30;
+  }
+  .pill-sell {
+    @apply pill bg-green-500/15 text-green-300 border border-green-500/30;
+  }
+  .pill-stock {
+    @apply pill bg-blue-500/15 text-blue-300 border border-blue-500/30;
+  }
+  .pill-option {
+    @apply pill bg-amber-500/15 text-amber-300 border border-amber-500/30;
+  }
+  .pill-closed {
+    @apply pill bg-gray-500/20 text-gray-300 border border-gray-500/40;
+  }
+  .pill-open {
+    @apply pill bg-emerald-500/15 text-emerald-300 border border-emerald-500/30;
+  }
+}
+
+.text-profit {
+  color: #22c55e;
+}
+.text-loss {
+  color: #ef4444;
+}
