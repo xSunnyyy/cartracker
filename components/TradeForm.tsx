@@ -4,10 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { Trade, TradeType, TradeAction, OptionType } from "@/lib/types";
 import { computeTotal, formatCurrency } from "@/lib/calculations";
 
+export type TradePrefill = Partial<
+  Omit<Trade, "id" | "monthId" | "total" | "balanceAfterTrade">
+>;
+
 interface Props {
   monthId: string;
   availableBalance: number;
   initialTrade?: Trade;
+  prefill?: TradePrefill | null;
   onSubmit: (trade: Omit<Trade, "id" | "total" | "balanceAfterTrade">) => void;
   onCancel?: () => void;
   disabled?: boolean;
@@ -21,36 +26,42 @@ export function TradeForm({
   monthId,
   availableBalance,
   initialTrade,
+  prefill,
   onSubmit,
   onCancel,
   disabled,
 }: Props) {
-  const [tradeType, setTradeType] = useState<TradeType>(initialTrade?.tradeType ?? "stock");
-  const [action, setAction] = useState<TradeAction>(initialTrade?.action ?? "buy");
-  const [ticker, setTicker] = useState(initialTrade?.ticker ?? "");
-  const [date, setDate] = useState(initialTrade?.date ?? todayISO());
-  const [quantity, setQuantity] = useState(initialTrade?.quantity.toString() ?? "");
-  const [price, setPrice] = useState(initialTrade?.price.toString() ?? "");
-  const [notes, setNotes] = useState(initialTrade?.notes ?? "");
-  const [optionType, setOptionType] = useState<OptionType>(initialTrade?.optionType ?? "call");
-  const [strike, setStrike] = useState(initialTrade?.strike?.toString() ?? "");
-  const [expiration, setExpiration] = useState(initialTrade?.expiration ?? "");
+  const seed = initialTrade ?? prefill ?? null;
+  const [tradeType, setTradeType] = useState<TradeType>(seed?.tradeType ?? "stock");
+  const [action, setAction] = useState<TradeAction>(seed?.action ?? "buy");
+  const [ticker, setTicker] = useState(seed?.ticker ?? "");
+  const [date, setDate] = useState(seed?.date ?? todayISO());
+  const [quantity, setQuantity] = useState(seed?.quantity?.toString() ?? "");
+  const [price, setPrice] = useState(seed?.price?.toString() ?? "");
+  const [notes, setNotes] = useState(seed?.notes ?? "");
+  const [optionType, setOptionType] = useState<OptionType>(seed?.optionType ?? "call");
+  const [strike, setStrike] = useState(seed?.strike?.toString() ?? "");
+  const [expiration, setExpiration] = useState(seed?.expiration ?? "");
   const [error, setError] = useState<string | null>(null);
 
-  // Reset when switching between create/edit targets.
+  // Apply seed values when switching edit target or when a new prefill arrives.
+  // Treat the seed as a complete spec — fields it leaves out are reset to defaults
+  // so prefilling a Sell doesn't carry over half-typed values from a prior entry.
   useEffect(() => {
-    if (!initialTrade) return;
-    setTradeType(initialTrade.tradeType);
-    setAction(initialTrade.action);
-    setTicker(initialTrade.ticker);
-    setDate(initialTrade.date);
-    setQuantity(initialTrade.quantity.toString());
-    setPrice(initialTrade.price.toString());
-    setNotes(initialTrade.notes ?? "");
-    setOptionType(initialTrade.optionType ?? "call");
-    setStrike(initialTrade.strike?.toString() ?? "");
-    setExpiration(initialTrade.expiration ?? "");
-  }, [initialTrade]);
+    const src = initialTrade ?? prefill;
+    if (!src) return;
+    setTradeType(src.tradeType ?? "stock");
+    setAction(src.action ?? "buy");
+    setTicker(src.ticker ?? "");
+    setDate(src.date ?? todayISO());
+    setQuantity(src.quantity !== undefined ? src.quantity.toString() : "");
+    setPrice(src.price !== undefined ? src.price.toString() : "");
+    setNotes(src.notes ?? "");
+    setOptionType(src.optionType ?? "call");
+    setStrike(src.strike !== undefined ? src.strike.toString() : "");
+    setExpiration(src.expiration ?? "");
+    setError(null);
+  }, [initialTrade, prefill]);
 
   const qtyNum = parseFloat(quantity);
   const priceNum = parseFloat(price);

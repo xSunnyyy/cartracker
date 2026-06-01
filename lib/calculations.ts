@@ -89,6 +89,29 @@ export function perTradePL(trade: Trade, prior: Trade[]): number | null {
   return trade.total - costForSold;
 }
 
+// Identity for an open position: same ticker + trade type, and for options the
+// same contract (type + strike + expiration). Used to net buys against sells.
+export function positionKey(t: Trade): string {
+  const ticker = t.ticker.toUpperCase();
+  if (t.tradeType === "option") {
+    return `${ticker}|opt|${t.optionType ?? ""}|${t.strike ?? ""}|${t.expiration ?? ""}`;
+  }
+  return `${ticker}|stock`;
+}
+
+// Net open quantity per position across all the given trades.
+// Positive = still long; 0 or negative = fully closed (or net short, which this
+// app doesn't really model — treat as closed).
+export function openPositionQty(trades: Trade[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of trades) {
+    const key = positionKey(t);
+    const cur = out.get(key) ?? 0;
+    out.set(key, t.action === "buy" ? cur + t.quantity : cur - t.quantity);
+  }
+  return out;
+}
+
 export function formatCurrency(n: number): string {
   return n.toLocaleString("en-US", {
     style: "currency",

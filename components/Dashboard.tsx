@@ -5,10 +5,14 @@ import { useTradingData } from "@/hooks/useTradingData";
 import { MonthSetup } from "./MonthSetup";
 import { MonthCard } from "./MonthCard";
 import { MonthSwitcher } from "./MonthSwitcher";
-import { TradeForm } from "./TradeForm";
+import { TradeForm, type TradePrefill } from "./TradeForm";
 import { TradeHistory } from "./TradeHistory";
 import { CloseMonthModal } from "./CloseMonthModal";
 import type { Trade } from "@/lib/types";
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export function Dashboard() {
   const {
@@ -30,7 +34,29 @@ export function Dashboard() {
 
   const [showNewMonth, setShowNewMonth] = useState(false);
   const [editing, setEditing] = useState<Trade | null>(null);
+  const [prefill, setPrefill] = useState<TradePrefill | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+
+  const scrollFormIntoView = () => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const startSellFrom = (buy: Trade, remainingQty: number) => {
+    setEditing(null);
+    setPrefill({
+      tradeType: buy.tradeType,
+      action: "sell",
+      ticker: buy.ticker,
+      date: todayISO(),
+      quantity: remainingQty,
+      optionType: buy.optionType,
+      strike: buy.strike,
+      expiration: buy.expiration,
+    });
+    scrollFormIntoView();
+  };
 
   if (!hydrated) {
     return (
@@ -87,6 +113,7 @@ export function Dashboard() {
               selectMonth(id);
               setShowNewMonth(false);
               setEditing(null);
+              setPrefill(null);
             }}
             onNew={() => setShowNewMonth(true)}
           />
@@ -119,15 +146,23 @@ export function Dashboard() {
                   monthId={activeMonth.id}
                   availableBalance={activeMonth.currentBalance}
                   initialTrade={editing ?? undefined}
+                  prefill={editing ? null : prefill}
                   onSubmit={(data) => {
                     if (editing) {
                       updateTrade(editing.id, data);
                       setEditing(null);
                     } else {
                       addTrade(data);
+                      setPrefill(null);
                     }
                   }}
-                  onCancel={editing ? () => setEditing(null) : undefined}
+                  onCancel={
+                    editing
+                      ? () => setEditing(null)
+                      : prefill
+                      ? () => setPrefill(null)
+                      : undefined
+                  }
                   disabled={monthClosed}
                 />
               ) : (
@@ -148,12 +183,12 @@ export function Dashboard() {
                 trades={tradesForActive}
                 readOnly={monthClosed}
                 onEdit={(t) => {
+                  setPrefill(null);
                   setEditing(t);
-                  if (typeof window !== "undefined") {
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }
+                  scrollFormIntoView();
                 }}
                 onDelete={(t) => deleteTrade(t.id)}
+                onSell={(t, remaining) => startSellFrom(t, remaining)}
               />
             </div>
           </>
