@@ -113,52 +113,48 @@ export function Dashboard() {
               onDelete={() => deleteMonth(activeMonth.id)}
             />
 
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-              <div className="lg:col-span-2 space-y-5">
-                {!monthClosed ? (
-                  <TradeForm
-                    monthId={activeMonth.id}
-                    availableBalance={activeMonth.currentBalance}
-                    initialTrade={editing ?? undefined}
-                    onSubmit={(data) => {
-                      if (editing) {
-                        updateTrade(editing.id, data);
-                        setEditing(null);
-                      } else {
-                        addTrade(data);
-                      }
-                    }}
-                    onCancel={editing ? () => setEditing(null) : undefined}
-                    disabled={monthClosed}
-                  />
-                ) : (
-                  <div className="card">
-                    <h2 className="text-lg font-semibold mb-1">Month closed</h2>
-                    <p className="text-sm text-gray-400 mb-3">
-                      Trades are read-only. Reopen the month to make changes.
-                    </p>
-                    <button
-                      onClick={() => reopenMonth(activeMonth.id)}
-                      className="btn-ghost"
-                    >
-                      Reopen month
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="lg:col-span-3">
-                <TradeHistory
-                  trades={tradesForActive}
-                  readOnly={monthClosed}
-                  onEdit={(t) => {
-                    setEditing(t);
-                    if (typeof window !== "undefined") {
-                      window.scrollTo({ top: 0, behavior: "smooth" });
+            <div className="space-y-5">
+              {!monthClosed ? (
+                <TradeForm
+                  monthId={activeMonth.id}
+                  availableBalance={activeMonth.currentBalance}
+                  initialTrade={editing ?? undefined}
+                  onSubmit={(data) => {
+                    if (editing) {
+                      updateTrade(editing.id, data);
+                      setEditing(null);
+                    } else {
+                      addTrade(data);
                     }
                   }}
-                  onDelete={(t) => deleteTrade(t.id)}
+                  onCancel={editing ? () => setEditing(null) : undefined}
+                  disabled={monthClosed}
                 />
-              </div>
+              ) : (
+                <div className="card">
+                  <h2 className="text-lg font-semibold mb-1">Month closed</h2>
+                  <p className="text-sm text-gray-400 mb-3">
+                    Trades are read-only. Reopen the month to make changes.
+                  </p>
+                  <button
+                    onClick={() => reopenMonth(activeMonth.id)}
+                    className="btn-ghost"
+                  >
+                    Reopen month
+                  </button>
+                </div>
+              )}
+              <TradeHistory
+                trades={tradesForActive}
+                readOnly={monthClosed}
+                onEdit={(t) => {
+                  setEditing(t);
+                  if (typeof window !== "undefined") {
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }
+                }}
+                onDelete={(t) => deleteTrade(t.id)}
+              />
             </div>
           </>
         )}
