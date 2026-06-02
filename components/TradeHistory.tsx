@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import type { Trade } from "@/lib/types";
 import {
   formatCurrency,
@@ -8,6 +9,7 @@ import {
   positionKey,
   sortTrades,
 } from "@/lib/calculations";
+import { useQuotes } from "@/hooks/useQuotes";
 
 interface Props {
   trades: Trade[];
@@ -17,13 +19,60 @@ interface Props {
   onSell?: (trade: Trade, remainingQty: number) => void;
 }
 
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Props) {
   const sorted = sortTrades(trades);
   const openQty = openPositionQty(sorted);
 
+  const stockSymbols = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          sorted
+            .filter((t) => t.tradeType === "stock")
+            .map((t) => t.ticker.toUpperCase())
+        )
+      ),
+    [sorted]
+  );
+
+  const {
+    quotes,
+    loading: quotesLoading,
+    errors: quoteErrors,
+    source,
+    lastRefreshed,
+    refresh,
+  } = useQuotes(stockSymbols);
+
   const remainingFor = (t: Trade): number => {
     if (t.action !== "buy") return 0;
     return Math.max(0, openQty.get(positionKey(t)) ?? 0);
+  };
+
+  // Hindsight = what you'd be up/down right now relative to this trade.
+  //   Buys:  (current - tradePrice) × qty  (would-have-gained if held)
+  //   Sells: (tradePrice - current) × qty  (saved from later drop, or missed gain)
+  // Positive = good call retrospectively (green); negative = bad call (red).
+  const hindsightFor = (
+    t: Trade
+  ): { delta: number | null; price: number | null; status: "ok" | "loading" | "na" | "err" } => {
+    if (t.tradeType !== "stock") return { delta: null, price: null, status: "na" };
+    const q = quotes[t.ticker.toUpperCase()];
+    if (!q) {
+      if (quoteErrors[t.ticker.toUpperCase()]) return { delta: null, price: null, status: "err" };
+      return { delta: null, price: null, status: quotesLoading ? "loading" : "na" };
+    }
+    const dir = t.action === "buy" ? 1 : -1;
+    return {
+      delta: dir * (q.price - t.price) * t.quantity,
+      price: q.price,
+      status: "ok",
+    };
   };
 
   if (sorted.length === 0) {
@@ -37,11 +86,38 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Pro
     );
   }
 
+  const errorCount = Object.keys(quoteErrors).filter((s) => !quotes[s]).length;
+
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Trade history</h2>
-        <div className="text-xs text-gray-400">{sorted.length} trades</div>
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-lg font-semibold">Trade history</h2>
+          <span className="text-xs text-gray-400">{sorted.length} trades</span>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-gray-400">
+          {lastRefreshed && (
+            <span title={`Source: ${source ?? "n/a"}`}>
+              Prices {formatTime(lastRefreshed)}
+              {source && <span className="ml-1 opacity-60">· {source}</span>}
+            </span>
+          )}
+          {errorCount > 0 && (
+            <span
+              className="text-amber-300"
+              title="Quote provider couldn't return a price for some symbols. Try refreshing or set FINNHUB_API_KEY."
+            >
+              {errorCount} unavailable
+            </span>
+          )}
+          <button
+            onClick={() => refresh(true)}
+            disabled={quotesLoading || stockSymbols.length === 0}
+            className="text-blue-300 hover:text-blue-200 disabled:opacity-50"
+          >
+            {quotesLoading ? "Refreshing…" : "Refresh prices"}
+          </button>
+        </div>
       </div>
 
       {/* Desktop table */}
@@ -58,6 +134,12 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Pro
               <th className="py-2 px-2 text-right">Total</th>
               <th className="py-2 px-2 text-right">Balance</th>
               <th className="py-2 px-2 text-right">P/L</th>
+              <th
+                className="py-2 px-2 text-right"
+                title="Hindsight: what you'd be up or down right now at the current stock price relative to this trade. Positive = good call, negative = bad call."
+              >
+                Hindsight
+              </th>
               <th className="py-2 px-2">Notes</th>
               {!readOnly && <th className="py-2 px-2"></th>}
             </tr>
@@ -65,6 +147,7 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Pro
           <tbody>
             {sorted.map((t, idx) => {
               const pl = perTradePL(t, sorted.slice(0, idx));
+              const h = hindsightFor(t);
               return (
                 <tr
                   key={t.id}
@@ -102,6 +185,34 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Pro
                     }`}
                   >
                     {pl == null ? "—" : formatCurrency(pl)}
+                  </td>
+                  <td
+                    className={`py-2.5 px-2 font-mono text-right ${
+                      h.delta == null
+                        ? "text-gray-500"
+                        : h.delta >= 0
+                        ? "text-profit"
+                        : "text-loss"
+                    }`}
+                  >
+                    {h.status === "na" && "—"}
+                    {h.status === "loading" && <span className="opacity-50">…</span>}
+                    {h.status === "err" && (
+                      <span
+                        className="text-amber-300/70"
+                        title={quoteErrors[t.ticker.toUpperCase()]}
+                      >
+                        n/a
+                      </span>
+                    )}
+                    {h.status === "ok" && h.delta != null && (
+                      <span className="flex flex-col items-end leading-tight">
+                        <span>{formatCurrency(h.delta)}</span>
+                        <span className="text-[10px] text-gray-400 font-normal">
+                          @{formatCurrency(h.price!)}
+                        </span>
+                      </span>
+                    )}
                   </td>
                   <td className="py-2.5 px-2 text-gray-400 max-w-[180px] truncate">
                     {t.notes ?? ""}
@@ -144,6 +255,7 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Pro
       <div className="md:hidden space-y-2">
         {sorted.map((t, idx) => {
           const pl = perTradePL(t, sorted.slice(0, idx));
+          const h = hindsightFor(t);
           return (
             <div
               key={t.id}
@@ -187,6 +299,20 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Pro
                       }`}
                     >
                       {formatCurrency(pl)}
+                    </div>
+                  </>
+                )}
+                {h.status === "ok" && h.delta != null && (
+                  <>
+                    <div className="text-gray-400 text-xs">
+                      Hindsight <span className="opacity-60">@{formatCurrency(h.price!)}</span>
+                    </div>
+                    <div
+                      className={`text-right font-mono ${
+                        h.delta >= 0 ? "text-profit" : "text-loss"
+                      }`}
+                    >
+                      {formatCurrency(h.delta)}
                     </div>
                   </>
                 )}
