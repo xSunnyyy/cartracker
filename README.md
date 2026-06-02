@@ -43,11 +43,12 @@ the opposite.
 Quotes are fetched by the `/api/quote` server route. Two providers, in
 order of preference:
 
-1. **Finnhub** — set `FINNHUB_API_KEY` (free tier, 60 req/min, signup at
-   <https://finnhub.io/dashboard>). Most reliable.
-2. **Yahoo Finance** unauthenticated chart endpoint — used automatically
-   if no Finnhub key is set. May rate-limit or be blocked depending on
-   region/host.
+1. **Twelve Data** — set `TWELVEDATA_API_KEY` (free tier, 8 req/min,
+   800 req/day, signup at <https://twelvedata.com/dashboard>). Required
+   for production: Yahoo's endpoint blocks most cloud-provider IPs.
+2. **Yahoo Finance** unauthenticated chart endpoint — fallback if Twelve
+   Data is missing or returns no data for a symbol. Usually works in
+   local dev only.
 
 Options aren't supported (free APIs don't return option chains), so
 option rows show `—` in the Hindsight column.

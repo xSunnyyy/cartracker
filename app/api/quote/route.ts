@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 
 // Server-side quote proxy. Two providers, in order of preference:
-//   1. Finnhub (if FINNHUB_API_KEY is set) — free tier, 60 req/min, reliable.
-//   2. Yahoo Finance unofficial chart endpoint — no auth, may rate-limit or
-//      block depending on region/host.
+//   1. Twelve Data (if TWELVEDATA_API_KEY is set) — free tier 8 req/min,
+//      800 req/day. Reliable, supports batch fetch by comma-separated symbols.
+//   2. Yahoo Finance unofficial chart endpoint — no auth, but Yahoo blocks
+//      many cloud-provider IPs (including AWS/Vercel), so it's only useful
+//      as a last-resort dev fallback.
 //
-// Returns { quotes: { SYMBOL: { price, prevClose, timestamp } }, errors,
-// source }. Options aren't supported — only equities.
+// Options aren't supported — only equities.
 
 interface QuoteData {
   price: number;
@@ -17,19 +18,65 @@ interface QuoteData {
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
 
-async function fetchFinnhub(symbol: string, apiKey: string): Promise<QuoteData | null> {
-  const r = await fetch(
-    `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`,
-    { cache: "no-store" }
-  );
-  if (!r.ok) return null;
-  const d = (await r.json()) as { c?: number; pc?: number; t?: number };
-  if (!d || typeof d.c !== "number" || d.c === 0) return null;
+// Twelve Data /quote returns {symbol, close, previous_close, timestamp, ...}
+// for a single symbol, or {SYM1: {...}, SYM2: {...}} for multiple.
+// Errored symbols come back as {code, message, status: "error"}.
+interface TDQuote {
+  symbol?: string;
+  close?: string;
+  previous_close?: string;
+  timestamp?: number | string;
+  status?: string;
+  code?: number;
+  message?: string;
+}
+
+function parseTwelveData(raw: TDQuote): QuoteData | null {
+  if (!raw || raw.status === "error" || raw.code) return null;
+  const price = raw.close != null ? parseFloat(String(raw.close)) : NaN;
+  if (!Number.isFinite(price) || price === 0) return null;
+  const prevClose =
+    raw.previous_close != null ? parseFloat(String(raw.previous_close)) : NaN;
+  const ts = raw.timestamp != null ? Number(raw.timestamp) * 1000 : Date.now();
   return {
-    price: d.c,
-    prevClose: typeof d.pc === "number" ? d.pc : 0,
-    timestamp: d.t ? d.t * 1000 : Date.now(),
+    price,
+    prevClose: Number.isFinite(prevClose) ? prevClose : 0,
+    timestamp: Number.isFinite(ts) ? ts : Date.now(),
   };
+}
+
+async function fetchTwelveData(
+  symbols: string[],
+  apiKey: string
+): Promise<{ quotes: Record<string, QuoteData>; errors: Record<string, string> }> {
+  const quotes: Record<string, QuoteData> = {};
+  const errors: Record<string, string> = {};
+  const url =
+    `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbols.join(","))}` +
+    `&apikey=${encodeURIComponent(apiKey)}`;
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) {
+    for (const s of symbols) errors[s] = `twelvedata HTTP ${r.status}`;
+    return { quotes, errors };
+  }
+  const data = (await r.json().catch(() => ({}))) as Record<string, unknown> | TDQuote;
+
+  // Single-symbol response shape: the quote object itself.
+  if (symbols.length === 1) {
+    const q = parseTwelveData(data as TDQuote);
+    if (q) quotes[symbols[0]] = q;
+    else errors[symbols[0]] = (data as TDQuote).message ?? "no data";
+    return { quotes, errors };
+  }
+
+  // Multi-symbol response shape: { SYM: quoteObj }.
+  for (const sym of symbols) {
+    const entry = (data as Record<string, TDQuote>)[sym];
+    const q = entry ? parseTwelveData(entry) : null;
+    if (q) quotes[sym] = q;
+    else errors[sym] = entry?.message ?? "no data";
+  }
+  return { quotes, errors };
 }
 
 async function fetchYahoo(symbol: string): Promise<QuoteData | null> {
@@ -82,27 +129,42 @@ export async function GET(req: Request) {
     return NextResponse.json({ quotes: {}, errors: {}, source: "none" });
   }
 
-  const apiKey = process.env.FINNHUB_API_KEY;
+  const twelveKey = process.env.TWELVEDATA_API_KEY;
   const quotes: Record<string, QuoteData> = {};
   const errors: Record<string, string> = {};
+  let source: "twelvedata" | "yahoo" | "mixed" | "none" = "none";
 
-  await Promise.all(
-    symbols.map(async (sym) => {
-      try {
-        let q: QuoteData | null = null;
-        if (apiKey) q = await fetchFinnhub(sym, apiKey);
-        if (!q) q = await fetchYahoo(sym);
-        if (q) quotes[sym] = q;
-        else errors[sym] = "no data";
-      } catch (e) {
-        errors[sym] = (e as Error).message || "fetch error";
-      }
-    })
-  );
+  if (twelveKey) {
+    try {
+      const td = await fetchTwelveData(symbols, twelveKey);
+      Object.assign(quotes, td.quotes);
+      Object.assign(errors, td.errors);
+      if (Object.keys(td.quotes).length > 0) source = "twelvedata";
+    } catch (e) {
+      for (const s of symbols) errors[s] = (e as Error).message || "twelvedata error";
+    }
+  }
 
-  return NextResponse.json({
-    quotes,
-    errors,
-    source: apiKey ? "finnhub" : "yahoo",
-  });
+  // Fallback for any symbols still missing.
+  const missing = symbols.filter((s) => !quotes[s]);
+  if (missing.length > 0) {
+    await Promise.all(
+      missing.map(async (sym) => {
+        try {
+          const q = await fetchYahoo(sym);
+          if (q) {
+            quotes[sym] = q;
+            delete errors[sym];
+            source = source === "twelvedata" ? "mixed" : "yahoo";
+          } else if (!errors[sym]) {
+            errors[sym] = "no data";
+          }
+        } catch (e) {
+          if (!errors[sym]) errors[sym] = (e as Error).message || "fetch error";
+        }
+      })
+    );
+  }
+
+  return NextResponse.json({ quotes, errors, source });
 }
