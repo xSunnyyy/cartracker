@@ -32,6 +32,28 @@ npm run dev
 
 Open http://localhost:3000.
 
+## Live stock prices
+
+The Trade History shows a **Hindsight** column for each stock trade —
+how much you'd be up or down right now at the live price relative to
+that trade. Positive numbers (green) mean the trade was a good call in
+hindsight; negative numbers (red) mean you'd have been better off doing
+the opposite.
+
+Quotes are fetched by the `/api/quote` server route. Two providers, in
+order of preference:
+
+1. **Finnhub** — set `FINNHUB_API_KEY` (free tier, 60 req/min, signup at
+   <https://finnhub.io/dashboard>). Most reliable.
+2. **Yahoo Finance** unauthenticated chart endpoint — used automatically
+   if no Finnhub key is set. May rate-limit or be blocked depending on
+   region/host.
+
+Options aren't supported (free APIs don't return option chains), so
+option rows show `—` in the Hindsight column.
+
+Copy `.env.example` to `.env.local` to configure.
+
 ## How balances work
 
 - Stock total: `quantity × price`
