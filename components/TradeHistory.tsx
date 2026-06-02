@@ -54,22 +54,25 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Pro
     return Math.max(0, openQty.get(positionKey(t)) ?? 0);
   };
 
-  // Hindsight = what you'd be up/down right now relative to this trade.
-  //   Buys:  (current - tradePrice) × qty  (would-have-gained if held)
-  //   Sells: (tradePrice - current) × qty  (saved from later drop, or missed gain)
-  // Positive = good call retrospectively (green); negative = bad call (red).
+  // Hindsight is only meaningful for sells: did you sell above or below the
+  // current price?
+  //   delta = (sellPrice − currentPrice) × qty
+  // Positive (sold higher than now) = good call (green).
+  // Negative (sold lower than now) = missed out (red).
+  // Buys and options show "—".
   const hindsightFor = (
     t: Trade
   ): { delta: number | null; price: number | null; status: "ok" | "loading" | "na" | "err" } => {
-    if (t.tradeType !== "stock") return { delta: null, price: null, status: "na" };
+    if (t.tradeType !== "stock" || t.action !== "sell") {
+      return { delta: null, price: null, status: "na" };
+    }
     const q = quotes[t.ticker.toUpperCase()];
     if (!q) {
       if (quoteErrors[t.ticker.toUpperCase()]) return { delta: null, price: null, status: "err" };
       return { delta: null, price: null, status: quotesLoading ? "loading" : "na" };
     }
-    const dir = t.action === "buy" ? 1 : -1;
     return {
-      delta: dir * (q.price - t.price) * t.quantity,
+      delta: (t.price - q.price) * t.quantity,
       price: q.price,
       status: "ok",
     };
@@ -136,7 +139,7 @@ export function TradeHistory({ trades, readOnly, onEdit, onDelete, onSell }: Pro
               <th className="py-2 px-2 text-right">P/L</th>
               <th
                 className="py-2 px-2 text-right"
-                title="Hindsight: what you'd be up or down right now at the current stock price relative to this trade. Positive = good call, negative = bad call."
+                title="Hindsight (sells only): (sellPrice − currentPrice) × qty. Positive = sold above current price (good call). Negative = sold below current price (missed out)."
               >
                 Hindsight
               </th>
